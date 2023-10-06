@@ -16,7 +16,9 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/net/lwm2m.h>
+#include <zephyr/net/net_if.h>
 #include "modules.h"
+#include <errno.h>
 
 #define APP_BANNER "Run LWM2M client"
 
@@ -265,6 +267,23 @@ static void observe_cb(enum lwm2m_observe_event event,
 	}
 }
 
+int wait_for_network(){
+	struct net_if * curr_if = net_if_get_default();
+	int64_t start_time = k_uptime_get();
+	bool carrier_ok = false;
+	while(!carrier_ok) { // Wait for a network interface before continuing 
+		k_msleep(100);
+		carrier_ok = net_if_is_carrier_ok(curr_if);
+
+		if (!carrier_ok && (k_uptime_get() - start_time)>60000){
+			//Stop if no network interface available within a minute
+			return -ETIMEDOUT;
+		}
+	}
+	return 0;
+
+}
+
 int main(void)
 {
 	uint32_t flags = IS_ENABLED(CONFIG_LWM2M_RD_CLIENT_SUPPORT_BOOTSTRAP) ?
@@ -285,6 +304,10 @@ int main(void)
 #if defined(CONFIG_LWM2M_DTLS_SUPPORT)
 	client_ctx.tls_tag = CONFIG_LWM2M_APP_TLS_TAG;
 #endif
+	if (wait_for_network()<0){
+		return 0;
+	}
+	k_msleep(2000);//Wait 2 more seconds after network is available before starting lwm2m.
 
 	/* client_ctx.sec_obj_inst is 0 as a starting point */
 	lwm2m_rd_client_start(&client_ctx, endpoint, flags, rd_client_event, observe_cb);

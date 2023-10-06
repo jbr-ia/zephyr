@@ -56,7 +56,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_MODEM_LOG_LEVEL);
 /* Uncomment the #define below to enable a hexdump of all incoming
  * data from the modem receiver
  */
-/* #define HL7800_ENABLE_VERBOSE_MODEM_RECV_HEXDUMP 1 */
+#define HL7800_ENABLE_VERBOSE_MODEM_RECV_HEXDUMP 1 
 
 #define HL7800_LOG_UNHANDLED_RX_MSGS 1
 
@@ -987,8 +987,10 @@ static int send_at_cmd(struct hl7800_socket *sock, const uint8_t *data,
 		}
 
 		if (!sock) {
+			LOG_DBG("sem_take, response_sem");
 			ret = k_sem_take(&iface_ctx.response_sem, timeout);
 		} else {
+			LOG_DBG("sem_take, sock_send_sem");
 			ret = k_sem_take(&sock->sock_send_sem, timeout);
 		}
 
@@ -3677,9 +3679,11 @@ static bool on_cmd_sockok(struct net_buf **buf, uint16_t len)
 	sock = socket_from_id(iface_ctx.last_socket_id);
 	if (!sock) {
 		iface_ctx.last_error = 0;
+		LOG_DBG("sem_give, response_sem");
 		k_sem_give(&iface_ctx.response_sem);
 	} else {
 		sock->error = 0;
+		LOG_DBG("sem_give, sock_send_sem");
 		k_sem_give(&sock->sock_send_sem);
 	}
 	return true;
@@ -3907,6 +3911,7 @@ static bool on_cmd_sockcreate(enum net_sock_type type, struct net_buf **buf, uin
 	char value[MDM_MAX_RESP_SIZE];
 	struct hl7800_socket *sock = NULL;
 
+	int initial_socket_id = iface_ctx.last_socket_id ;
 	out_len = net_buf_linearize(value, sizeof(value), *buf, 0, len);
 	value[out_len] = 0;
 	iface_ctx.last_socket_id = strtol(value, NULL, 10);
@@ -3933,7 +3938,7 @@ static bool on_cmd_sockcreate(enum net_sock_type type, struct net_buf **buf, uin
 			goto done;
 		}
 	}
-
+	LOG_DBG("last socket id. Before: %d, after: %d",initial_socket_id, iface_ctx.last_socket_id);
 	sock->socket_id = iface_ctx.last_socket_id;
 	sock->created = true;
 	sock->reconfig = false;
