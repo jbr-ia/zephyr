@@ -130,6 +130,7 @@ static int lwm2m_setup(void)
 
 	/* Create 2nd instance of security object needed for bootstrap */
 	lwm2m_create_object_inst(&LWM2M_OBJ(0, 1));
+	lwm2m_set_u16(&LWM2M_OBJ(0, 1, 10), CONFIG_LWM2M_SERVER_DEFAULT_SSID);
 #else
 	/* Match Security object instance with a Server object instance with
 	 * Short Server ID.
