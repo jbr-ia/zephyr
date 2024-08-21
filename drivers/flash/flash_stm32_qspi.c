@@ -23,6 +23,8 @@
 #include <zephyr/drivers/dma.h>
 #include <zephyr/drivers/dma/dma_stm32.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
 
 #if DT_INST_NODE_HAS_PROP(0, spi_bus_width) && \
 	DT_INST_PROP(0, spi_bus_width) == 4
@@ -1271,6 +1273,58 @@ static int flash_stm32_qspi_send_reset(const struct device *dev)
 }
 #endif
 
+int enter_dpd(const struct device *const dev)
+{
+	//if (IS_ENABLED(DT_INST_PROP(0, has_dpd))) {
+	QSPI_CommandTypeDef cmd = {
+		.Instruction = SPI_NOR_CMD_DPD,
+		.InstructionMode = QSPI_INSTRUCTION_1_LINE,
+	};
+
+		uint32_t t_enter_dpd = DT_INST_PROP_OR(0, t_enter_dpd, 0);
+		int ret;
+		ret = qspi_send_cmd(dev, &cmd);
+		if (ret < 0) {
+			return ret;
+		}
+		t_enter_dpd = 3000;
+		if (t_enter_dpd) {
+			uint32_t t_enter_dpd_us =
+				DIV_ROUND_UP(t_enter_dpd, NSEC_PER_USEC);
+
+			k_busy_wait(t_enter_dpd_us);
+		}
+	
+	return 0;
+}
+
+
+int exit_dpd(const struct device *const dev)
+{
+
+	//if (IS_ENABLED(DT_INST_PROP(0, has_dpd))) {
+	QSPI_CommandTypeDef cmd = {
+		.Instruction = SPI_NOR_CMD_RDPD,
+		.InstructionMode = QSPI_INSTRUCTION_1_LINE,
+	};
+		uint32_t t_exit_dpd = DT_INST_PROP_OR(0, t_exit_dpd, 0);
+		int ret;
+
+		ret = qspi_send_cmd(dev, &cmd);
+		if (ret < 0) {
+			return ret;
+		}
+
+		if (t_exit_dpd) {
+			uint32_t t_exit_dpd_us =
+				DIV_ROUND_UP(t_exit_dpd, NSEC_PER_USEC);
+
+			k_busy_wait(t_exit_dpd_us);
+		}
+	//}
+	return 0;
+}
+
 static int flash_stm32_qspi_init(const struct device *dev)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = dev->config;
@@ -1511,6 +1565,59 @@ static int flash_stm32_qspi_init(const struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_DEVICE
+static int flash_stm32_qspi_pm_action(const struct device *dev,
+			      enum pm_device_action action)
+{
+	const struct flash_stm32_qspi_config *dev_config = dev->config;
+	int ret;
+	
+
+	if (pm_device_is_busy(dev)) {
+		return -EBUSY;
+	}
+
+	switch (action) {
+	case PM_DEVICE_ACTION_SUSPEND:
+
+		ret = enter_dpd(dev);
+		if (ret < 0) {
+			return ret;
+		}
+
+		ret = pinctrl_apply_state(dev_config->pcfg,
+					  PINCTRL_STATE_SLEEP);
+		if (ret < 0) {
+			return ret;
+		}
+		break;
+
+	case PM_DEVICE_ACTION_RESUME:
+		ret = pinctrl_apply_state(dev_config->pcfg,
+					  PINCTRL_STATE_DEFAULT);
+		if (ret < 0) {
+			return ret;
+		}
+		
+		ret = exit_dpd(dev);
+		if (ret < 0) {
+			return ret;
+		}
+
+#ifndef CONFIG_PM_DEVICE_RUNTIME
+		/* If PM_DEVICE_RUNTIME, we're immediately going to use the device */
+		//qspi_device_uninit(dev);
+#endif
+		break;
+
+	default:
+		return -ENOTSUP;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_PM_DEVICE */
+
 #define DMA_CHANNEL_CONFIG(node, dir)					\
 		DT_DMAS_CELL_BY_NAME(node, dir, channel_config)
 
@@ -1590,7 +1697,8 @@ static struct flash_stm32_qspi_data flash_stm32_qspi_dev_data = {
 	QSPI_DMA_CHANNEL(STM32_QSPI_NODE, tx_rx)
 };
 
-DEVICE_DT_INST_DEFINE(0, &flash_stm32_qspi_init, NULL,
+PM_DEVICE_DT_INST_DEFINE(0, flash_stm32_qspi_pm_action);
+DEVICE_DT_INST_DEFINE(0, &flash_stm32_qspi_init, PM_DEVICE_DT_INST_GET(0),
 		      &flash_stm32_qspi_dev_data, &flash_stm32_qspi_cfg,
 		      POST_KERNEL, CONFIG_FLASH_INIT_PRIORITY,
 		      &flash_stm32_qspi_driver_api);
