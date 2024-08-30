@@ -259,6 +259,8 @@ struct gpio_stm32_data {
 	const struct device *dev;
 	/* user ISR cb */
 	sys_slist_t cb;
+	/* keep track of pins that have enabled the clock*/
+	uint32_t pin_has_clock_enabled;
 };
 
 /**
