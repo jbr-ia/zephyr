@@ -905,8 +905,25 @@ static int json_append_bytes_base64(const char *bytes, size_t len, void *data)
 			/* No space available for base64 data */
 			return -ENOMEM;
 		}
-		/* Update Data offset */
-		out->out_cpkt->offset += temp_length;
+		int padding_removed = 0;
+		for (int i=0;i<temp_length;i++){ // Change from base64 to base64 urlsafe-encoding
+			switch (CPKT_BUF_W_PTR(out->out_cpkt)[i]){
+				case '+':
+					CPKT_BUF_W_PTR(out->out_cpkt)[i] = '-';
+					break;
+				case '/':
+					CPKT_BUF_W_PTR(out->out_cpkt)[i] = '_';
+					break;
+				case '=':
+					CPKT_BUF_W_PTR(out->out_cpkt)[i] = 0;
+					padding_removed++;
+					break;
+				default:
+					break;
+			}
+		}
+		/* Update Data offset */		
+		out->out_cpkt->offset += (temp_length - padding_removed);
 	} else {
 		if (buf_append(CPKT_BUF_WRITE(fd->out->out_cpkt), bytes, len) < 0) {
 			return -ENOMEM;
