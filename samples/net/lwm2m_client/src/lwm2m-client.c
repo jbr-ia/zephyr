@@ -53,6 +53,7 @@ static int mem_free = 15;
 static int mem_total = 25;
 static double min_range = 0.0;
 static double max_range = 100;
+static char binary_data[1024];
 #if defined(CONFIG_LWM2M_IPSO_HUMIDITY_SENSOR)
 static double humidity_min_range = 0.0;
 static double humidity_max_range = 100.0;
@@ -227,6 +228,10 @@ static int lwm2m_setup(void)
 
 	/* IPSO: Timer object */
 	init_timer_object();
+
+	lwm2m_create_object_inst(&LWM2M_OBJ(19, 0)) ;
+	lwm2m_create_res_inst(&LWM2M_OBJ(19, 0, 0, 0));
+	lwm2m_set_res_buf(&LWM2M_OBJ(19, 0, 0, 0), &binary_data, sizeof(binary_data),0, 0);
 
 	return 0;
 }
